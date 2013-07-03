@@ -1,0 +1,7 @@
+exes = ;
+for local p in [ glob *_main.cc ] {
+  local name = [ MATCH "(.*)\_main.cc" : $(p) ] ;
+  exe $(name) : $(p) ../lm//kenlm ;
+  exes += $(name) ;
+}
+alias programs : $(exes) ;
