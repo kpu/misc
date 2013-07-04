@@ -49,7 +49,6 @@ template <class M> void Pair::Parse(const M &model, const std::vector<float> &we
     }
   }
   lm_score += scorer.Finish();
-  std::cerr << "lm_score = " << lm_score << std::endl;
 
   score_ = lm_score * weights[0] + static_cast<float>(word_count) * weights[1];
   util::TokenIter<util::SingleCharacter, true> i(*++pipes, ' ');
@@ -58,7 +57,6 @@ template <class M> void Pair::Parse(const M &model, const std::vector<float> &we
     score_ += value * weights[feature];
   }
   UTIL_THROW_IF(i, util::Exception, "Too many features for the number of weights.");
-  std::cerr << "Score is " << score_ << std::endl;
 }
 
 struct ScoreGreater : public std::binary_function<const Pair*, const Pair *, bool> {
@@ -72,9 +70,8 @@ void Flush(std::vector<Pair> &pool) {
   for (size_t i = 0; i < pool.size(); ++i) {
     sorting.push_back(&pool[i]);
   }
-  const size_t passed_ondisk = sorting.size();
   const size_t passed_mem = std::min<size_t>(sorting.size(), 20);
-  std::partial_sort(sorting.begin(), sorting.begin() + passed_mem, sorting.begin() + passed_ondisk, ScoreGreater());
+  std::partial_sort(sorting.begin(), sorting.begin() + passed_mem, sorting.end(), ScoreGreater());
   for (std::vector<const Pair*>::const_iterator i(sorting.begin()); i != sorting.begin() + passed_mem; ++i) {
     std::cout << (*i)->Line() << '\n';
   }
