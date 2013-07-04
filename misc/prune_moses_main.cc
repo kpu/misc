@@ -13,7 +13,7 @@ class Pair {
     std::string &MutableLine() { return line_; }
     const std::string &Line() const { return line_; }
 
-    void Parse(const lm::ngram::RestProbingModel &model, const std::vector<float> &weights);
+    template <class M> void Parse(const M &model, const std::vector<float> &weights);
 
     StringPiece Source() const { return source_; }
 
@@ -32,22 +32,24 @@ float PieceFloat(StringPiece str) {
   return ret;
 }
 
-void Pair::Parse(const lm::ngram::RestProbingModel &model, const std::vector<float> &weights) {
+template <class M> void Pair::Parse(const M &model, const std::vector<float> &weights) {
   util::TokenIter<util::MultiCharacter> pipes(line_, "|||");
   source_ = *pipes;
   lm::ngram::ChartState state;
-  lm::ngram::RuleScore<lm::ngram::RestProbingModel> scorer(model, state);
+  lm::ngram::RuleScore<M> scorer(model, state);
   float lm_score = 0.0;
   unsigned int word_count = 0;
   for (util::TokenIter<util::SingleCharacter, true> i(*++pipes, ' '); i; ++i) {
     if (*i->data() == '[') {
       lm_score += scorer.Finish();
       scorer.Reset();
+    } else {
+      scorer.Terminal(model.GetVocabulary().Index(*i));
+      ++word_count;
     }
-    scorer.Terminal(model.GetVocabulary().Index(*i));
-    ++word_count;
   }
   lm_score += scorer.Finish();
+  std::cerr << "lm_score = " << lm_score << std::endl;
 
   score_ = lm_score * weights[0] + static_cast<float>(word_count) * weights[1];
   util::TokenIter<util::SingleCharacter, true> i(*++pipes, ' ');
@@ -56,6 +58,7 @@ void Pair::Parse(const lm::ngram::RestProbingModel &model, const std::vector<flo
     score_ += value * weights[feature];
   }
   UTIL_THROW_IF(i, util::Exception, "Too many features for the number of weights.");
+  std::cerr << "Score is " << score_ << std::endl;
 }
 
 struct ScoreGreater : public std::binary_function<const Pair*, const Pair *, bool> {
@@ -78,29 +81,65 @@ void Flush(std::vector<Pair> &pool) {
   pool.clear();
 }
 
-int main() {
-  std::vector<Pair> pool;
+template <class M> void Loop(const M &model, std::vector<Pair> &pool, const std::vector<float> &weights) {
   StringPiece source("");
-  lm::ngram::RestProbingModel rest("lm");
-  std::vector<float> weights;
-  weights.push_back(0.220389);
-  weights.push_back(-0.499126 * -.434295);
-  weights.push_back(0.0566454);
-  weights.push_back(0.0318904);
-  weights.push_back(0.0353777);
-  weights.push_back(0.0350935);
-  weights.push_back(-0.0630753);
   while (true) {
     Pair got;
     if (!getline(std::cin, got.MutableLine())) {
       Flush(pool);
       break;
     }
-    got.Parse(rest, weights);
+    got.Parse(model, weights);
     if (got.Source() != source) {
       Flush(pool);
       source = got.Source();
     }
     pool.push_back(got);
+  }
+}
+
+int main(int argc, char *argv[]) {
+  if (argc < 2) {
+    std::cerr << "Expected LM" << std::endl;
+    return 1;
+  }
+  std::vector<Pair> pool;
+  std::vector<float> weights;
+  // LM
+  weights.push_back(0.203029);
+  // Words
+  weights.push_back(-0.319567);
+  // TM
+  weights.push_back(0.0434571);
+  weights.push_back(0.0427877);
+  weights.push_back(0.0378033);
+  weights.push_back(0.0167567);
+  weights.push_back(-0.233854);
+  // Note: glue doesn't count becuase it's not in the phrase table.
+
+  // Silly weight for wordpenalty.
+  weights[1] *= -.434295;
+
+  lm::ngram::ModelType type;
+  if (!lm::ngram::RecognizeBinary(argv[1], type)) {
+    std::cerr << "not a binary file: " << argv[1] << std::endl;
+    return 1;
+  }
+  switch (type) {
+    case lm::ngram::REST_PROBING:
+      {
+        lm::ngram::RestProbingModel rest(argv[1]);
+        Loop(rest, pool, weights);
+      }
+      break;
+    case lm::ngram::PROBING:
+      {
+        lm::ngram::Model m(argv[1]);
+        Loop(m, pool, weights);
+      }
+      break;
+    default:
+      std::cerr << "Unsupported model " << std::endl;
+      return 1;
   }
 }
