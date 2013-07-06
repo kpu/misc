@@ -42,6 +42,8 @@ void WriteSurface(const std::vector<StringPiece> &text, const std::vector<unsign
     if (*i->data() == '[' && i->data()[i->size() - 1] == ']') {
       out << StringPiece(i->data() + 1, i->size() - 2) << '~' << indices[i - text.begin()];
     } else {
+      UTIL_THROW_IF(std::find(i->data(), i->data() + i->size(), '#') != i->data() + i->size(), util::Exception, "# detected in input data");
+      UTIL_THROW_IF(std::find(i->data(), i->data() + i->size(), '~') != i->data() + i->size(), util::Exception, "~ detected in input data");
       out << *i;
     }
     out << ' ';
