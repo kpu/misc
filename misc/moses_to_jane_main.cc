@@ -53,10 +53,11 @@ void WriteSurface(const std::vector<StringPiece> &text, const std::vector<unsign
 int main() {
   util::FilePiece f(0, "stdin", &std::cerr);
   util::FakeOFStream out(1);
-  out << 
-    "0 0 0 0 0 0 1 0 # X # <unknown-word> # <unknown-word> # 1 1 1 1 1\n"
+  out <<
+    // passthrough gets a word penalty too.  Penultimate feature is passthrough, last feautre is glue
+    "0 0 0 0 0 0.434295 -1 0 # X # <unknown-word> # <unknown-word> # 1 1 1 1 1\n"
     "0 0 0 0 0 0 0 0 # S # X~0 # X~0 # 1 1 1 1 1\n"
-    "0 0 0 0 0 0 0 1 # S # S~0 X~1 # S~0 X~1 # 1 1 1 1 1\n";
+    "0 0 0 0 0 0 0 -1 # S # S~0 X~1 # S~0 X~1 # 1 1 1 1 1\n";
   std::vector<StringPiece> source, target;
   std::vector<unsigned int> src_idx, tgt_idx;
   try { while(true) {
@@ -72,7 +73,7 @@ int main() {
       out << std::min(100.0, -log(atof(scores->data()))) << ' ';
     }
     // Word penalty with stupid multiplier.  It's -.434295 but Jane uses costs so just .434295.
-    out << static_cast<unsigned int>(target.size() * .434295) << " 0 0 # X # ";
+    out << (static_cast<float>(target.size()) * .434295) << " 0 0 # X # ";
     WriteSurface(source, src_idx, out);
     out << "# ";
     WriteSurface(target, tgt_idx, out);
