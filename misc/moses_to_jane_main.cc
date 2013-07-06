@@ -39,8 +39,8 @@ void ParseAlign(StringPiece in, std::vector<unsigned int> &src, std::vector<unsi
 
 void WriteSurface(const std::vector<StringPiece> &text, const std::vector<unsigned int> &indices, util::FakeOFStream &out) {
   for (std::vector<StringPiece>::const_iterator i(text.begin()); i != text.end(); ++i) {
-    if (*i->data() == '[') {
-      out << "X~" << indices[i - text.begin()];
+    if (*i->data() == '[' && i->data()[i->size() - 1] == ']') {
+      out << StringPiece(i->data() + 1, i->size() - 2) << '~' << indices[i - text.begin()];
     } else {
       out << *i;
     }
