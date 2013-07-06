@@ -67,9 +67,10 @@ int main() {
     ParseAlign(*++pipes, src_idx, tgt_idx);
 
     for (; scores; ++scores) {
-      out << -log(atof(scores->data())) << ' ';
+      out << std::min(100.0, -log(atof(scores->data()))) << ' ';
     }
-    out << static_cast<unsigned int>(target.size()) << " 0 0 # X # ";
+    // Word penalty with stupid multiplier.  It's -.434295 but Jane uses costs so just .434295.
+    out << static_cast<unsigned int>(target.size() * .434295) << " 0 0 # X # ";
     WriteSurface(source, src_idx, out);
     out << "# ";
     WriteSurface(target, tgt_idx, out);
