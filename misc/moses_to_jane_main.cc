@@ -17,7 +17,7 @@ void ParseSurface(StringPiece from, std::vector<StringPiece> &out) {
   out.pop_back();
 }
 
-void ParseAlign(StringPiece in, std::vector<unsigned int> &src, std::vector<unsigned int> &tgt) {
+unsigned int ParseAlign(StringPiece in, std::vector<unsigned int> &src, std::vector<unsigned int> &tgt) {
   src.clear();
   tgt.clear();
   unsigned int idx = 0;
@@ -35,12 +35,15 @@ void ParseAlign(StringPiece in, std::vector<unsigned int> &src, std::vector<unsi
     src[src_idx] = idx;
     tgt[tgt_idx] = idx;
   }
+  return idx;
 }
 
-void WriteSurface(const std::vector<StringPiece> &text, const std::vector<unsigned int> &indices, util::FakeOFStream &out) {
+unsigned int WriteSurface(const std::vector<StringPiece> &text, const std::vector<unsigned int> &indices, util::FakeOFStream &out) {
+  unsigned int non_terminals = 0;
   for (std::vector<StringPiece>::const_iterator i(text.begin()); i != text.end(); ++i) {
     if (*i->data() == '[' && i->data()[i->size() - 1] == ']') {
       out << "X~" << indices[i - text.begin()];
+      ++non_terminals;
     } else {
       UTIL_THROW_IF(std::find(i->data(), i->data() + i->size(), '#') != i->data() + i->size(), util::Exception, "# detected in input data");
       UTIL_THROW_IF(std::find(i->data(), i->data() + i->size(), '~') != i->data() + i->size(), util::Exception, "~ detected in input data");
@@ -48,6 +51,7 @@ void WriteSurface(const std::vector<StringPiece> &text, const std::vector<unsign
     }
     out << ' ';
   }
+  return non_terminals;
 }
 
 int main() {
@@ -67,16 +71,16 @@ int main() {
     ParseSurface(*++pipes, target);
 
     util::TokenIter<util::SingleCharacter, true> scores(*++pipes, ' ');
-    ParseAlign(*++pipes, src_idx, tgt_idx);
+    unsigned int non_terminals = ParseAlign(*++pipes, src_idx, tgt_idx);
 
     for (; scores; ++scores) {
       out << std::min(100.0, -log(atof(scores->data()))) << ' ';
     }
     // Word penalty with stupid multiplier.  It's -.434295 but Jane uses costs so just .434295.
-    out << (static_cast<float>(target.size()) * .434295) << " 0 0 # X # ";
-    WriteSurface(source, src_idx, out);
+    out << (static_cast<float>(target.size() - non_terminals) * .434295) << " 0 0 # X # ";
+    UTIL_THROW_IF(non_terminals != WriteSurface(source, src_idx, out), util::Exception, "Non-terminal count mismatch");
     out << "# ";
-    WriteSurface(target, tgt_idx, out);
+    UTIL_THROW_IF(non_terminals != WriteSurface(target, tgt_idx, out), util::Exception, "Non-terminal count mismatch");
     out << "# 1 1 1 1 1 \n";
   } } catch (const util::EndOfFileException &e) {}
 }
