@@ -1,5 +1,6 @@
 #include "util/fake_ofstream.hh"
 #include "util/file_piece.hh"
+#include "util/murmur_hash.hh"
 #include "util/tokenize_piece.hh"
 
 #include <algorithm>
@@ -9,6 +10,41 @@
 
 #include <math.h>
 #include <stdlib.h>
+
+#include <boost/unordered_map.hpp>
+
+void PrintUnknown(StringPiece str, util::FakeOFStream &out) {
+  out << "0 0 0 0 0 0.434295 -1 0 # X # " << str << " # " << str << " # 1 1 1 1 1\n";
+}
+
+// Hallucinate unknown word entries for words that appear in phrases but not as singletons.
+class PassthroughMaker {
+  public:
+    void Singleton(StringPiece word) {
+      map_[util::MurmurHashNative(word.data(), word.size())].clear();
+    }
+
+    void InPhrase(StringPiece word) {
+      std::pair<uint64_t, std::string> to_ins;
+      to_ins.first = util::MurmurHashNative(word.data(), word.size());
+      std::pair<Map::iterator, bool> res(map_.insert(to_ins));
+      if (res.second) {
+        res.first->second.assign(word.data(), word.size());
+      }
+    }
+
+    void Print(util::FakeOFStream &to) {
+      for (boost::unordered_map<uint64_t, std::string>::const_iterator i = map_.begin(); i != map_.end(); ++i) {
+        if (i->second.size())
+          PrintUnknown(i->second, to);
+      }
+    }
+
+  private:
+    // key is murumurhash of word.  value is string if no vocab.
+    typedef boost::unordered_map<uint64_t, std::string> Map;
+    Map map_;
+};
 
 void ParseSurface(StringPiece from, std::vector<StringPiece> &out) {
   out.clear();
@@ -38,10 +74,14 @@ unsigned int ParseAlign(StringPiece in, std::vector<unsigned int> &src, std::vec
   return idx;
 }
 
+bool MosesNonTerminal(const StringPiece &str) {
+  return *str.data() == '[' && str.data()[str.size() - 1] == ']';
+}
+
 unsigned int WriteSurface(const std::vector<StringPiece> &text, const std::vector<unsigned int> &indices, util::FakeOFStream &out) {
   unsigned int non_terminals = 0;
   for (std::vector<StringPiece>::const_iterator i(text.begin()); i != text.end(); ++i) {
-    if (*i->data() == '[' && i->data()[i->size() - 1] == ']') {
+    if (MosesNonTerminal(*i)) {
       out << "X~" << indices[i - text.begin()];
       ++non_terminals;
     } else {
@@ -57,18 +97,30 @@ unsigned int WriteSurface(const std::vector<StringPiece> &text, const std::vecto
 int main() {
   util::FilePiece f(0, "stdin", &std::cerr);
   util::FakeOFStream out(1);
+  PrintUnknown("<unknown-word>", out);
   out <<
-    // passthrough gets a word penalty too.  Penultimate feature is passthrough, last feautre is glue
-    "0 0 0 0 0 0.434295 -1 0 # X # <unknown-word> # <unknown-word> # 1 1 1 1 1\n"
+    // passthrough gets a word penalty too.  Penultimate feature is passthrough, last feature is glue
     "0 0 0 0 0 0 0 0 # S # X~0 # X~0 # 1 1 1 1 1\n"
     "0 0 0 0 0 0 0 -1 # S # S~0 X~1 # S~0 X~1 # 1 1 1 1 1\n";
   std::vector<StringPiece> source, target;
   std::vector<unsigned int> src_idx, tgt_idx;
+  PassthroughMaker pass;
   try { while(true) {
     util::TokenIter<util::MultiCharacter> pipes(f.ReadLine(), "|||");
 
     ParseSurface(*pipes, source);
     ParseSurface(*++pipes, target);
+
+    if (source.size() == 1) {
+      if (!MosesNonTerminal(source[0])) {
+        pass.Singleton(source[0]);
+      }
+    } else {
+      for (std::vector<StringPiece>::const_iterator i = source.begin(); i != source.end(); ++i) {
+        if (!MosesNonTerminal(*i))
+          pass.InPhrase(*i);
+      }
+    }
 
     util::TokenIter<util::SingleCharacter, true> scores(*++pipes, ' ');
     unsigned int non_terminals = ParseAlign(*++pipes, src_idx, tgt_idx);
@@ -83,4 +135,5 @@ int main() {
     UTIL_THROW_IF(non_terminals != WriteSurface(target, tgt_idx, out), util::Exception, "Non-terminal count mismatch");
     out << "# 1 1 1 1 1 \n";
   } } catch (const util::EndOfFileException &e) {}
+  pass.Print(out);
 }
