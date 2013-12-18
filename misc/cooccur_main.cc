@@ -1,5 +1,3 @@
-#define BOOST_LEXICAL_CAST_ASSUME_C_LOCALE
-
 #include "util/file_piece.hh"
 #include "util/tokenize_piece.hh"
 #include "util/murmur_hash.hh"
@@ -7,7 +5,6 @@
 
 #include <boost/circular_buffer.hpp>
 #include <boost/unordered_map.hpp>
-#include <boost/lexical_cast.hpp>
 
 #include <iostream>
 
@@ -39,22 +36,17 @@ int main() {
   Table table;
   Entry entry;
   entry.value = 0;
-  while (true) {
-    try {
-      line = in.ReadLine();
-    } catch (const util::EndOfFileException &e) { break; }
-    history.clear();
-    for (util::TokenIter<util::AnyCharacter, true> tok(line, " \t"); tok; ++tok) {
-      uint32_t word = boost::lexical_cast<uint32_t>(*tok);
-      for (boost::circular_buffer<uint32_t>::const_iterator i = history.begin(); i != history.end(); ++i) {  
-        entry.key = SortPair(word, *i);
-        Table::MutableIterator it;
-        table.FindOrInsert(entry, it);
-        ++it->value;
-      }
-      history.push_back(word);
+  try { while (true) {
+    if (in.SkipSpacesIsNewline()) history.clear();
+    uint32_t word = in.ReadULong();
+    for (boost::circular_buffer<uint32_t>::const_iterator i = history.begin(); i != history.end(); ++i) {  
+      entry.key = SortPair(word, *i);
+      Table::MutableIterator it;
+      table.FindOrInsert(entry, it);
+      ++it->value;
     }
-  }
+    history.push_back(word);
+  } } catch (const util::EndOfFileException &e) {}
 /*  for (boost::unordered_map<std::pair<uint64_t, uint64_t>, uint64_t>::const_iterator i = counts.begin(); i != counts.end(); ++i) {
     std::cout << i->first.first << ' ' << i->first.second << ' ' << i->second << '\n';
   }*/

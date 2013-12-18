@@ -79,6 +79,23 @@ class FilePiece {
       }
     }
 
+    // Skip spaces defined by isspace.
+    bool SkipSpacesIsNewline(const bool *delim = kSpaces) {
+      assert(position_ <= position_end_);
+      for (; ; ++position_) {
+        if (position_ == position_end_) {
+          Shift();
+          // And break out at end of file.
+          if (position_ == position_end_) return true;
+        }
+        assert(position_ < position_end_);
+        if (*position_ == '\n') return true;
+        if (!delim[static_cast<unsigned char>(*position_)]) return false;
+      }
+    }
+
+
+
     uint64_t Offset() const {
       return position_ - data_.begin() + mapped_offset_;
     }
