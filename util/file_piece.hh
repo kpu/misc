@@ -1,5 +1,5 @@
-#ifndef UTIL_FILE_PIECE__
-#define UTIL_FILE_PIECE__
+#ifndef UTIL_FILE_PIECE_H
+#define UTIL_FILE_PIECE_H
 
 #include "util/ersatz_progress.hh"
 #include "util/exception.hh"
@@ -56,9 +56,32 @@ class FilePiece {
       return Consume(FindDelimiterOrEOF(delim));
     }
 
+    // Read word until the line or file ends.
+    bool ReadWordSameLine(StringPiece &to, const bool *delim = kSpaces) {
+      assert(delim[static_cast<unsigned char>('\n')]);
+      // Skip non-enter spaces.
+      for (; ; ++position_) {
+        if (position_ == position_end_) {
+          try {
+            Shift();
+          } catch (const util::EndOfFileException &e) { return false; }
+          // And break out at end of file.
+          if (position_ == position_end_) return false;
+        }
+        if (!delim[static_cast<unsigned char>(*position_)]) break;
+        if (*position_ == '\n') return false;
+      }
+      // We can't be at the end of file because there's at least one character open.
+      to = Consume(FindDelimiterOrEOF(delim));
+      return true;
+    }
+
     // Unlike ReadDelimited, this includes leading spaces and consumes the delimiter.
     // It is similar to getline in that way.
     StringPiece ReadLine(char delim = '\n');
+
+    // Doesn't throw EndOfFileException, just returns false.
+    bool ReadLineOrEOF(StringPiece &to, char delim = '\n');
 
     float ReadFloat();
     double ReadDouble();
@@ -78,23 +101,6 @@ class FilePiece {
         if (!delim[static_cast<unsigned char>(*position_)]) return;
       }
     }
-
-    // Skip spaces defined by isspace.
-    bool SkipSpacesIsNewline(const bool *delim = kSpaces) {
-      assert(position_ <= position_end_);
-      for (; ; ++position_) {
-        if (position_ == position_end_) {
-          Shift();
-          // And break out at end of file.
-          if (position_ == position_end_) return true;
-        }
-        assert(position_ < position_end_);
-        if (*position_ == '\n') return true;
-        if (!delim[static_cast<unsigned char>(*position_)]) return false;
-      }
-    }
-
-
 
     uint64_t Offset() const {
       return position_ - data_.begin() + mapped_offset_;
@@ -149,4 +155,4 @@ class FilePiece {
 
 } // namespace util
 
-#endif // UTIL_FILE_PIECE__
+#endif // UTIL_FILE_PIECE_H
