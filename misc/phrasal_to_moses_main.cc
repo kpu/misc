@@ -14,7 +14,7 @@ static const double_conversion::StringToDoubleConverter kConverter(
 } // namespace
 
 int main() {
-  util::FilePiece in(0, &std::cerr);
+  util::FilePiece in(0, NULL, &std::cerr);
   util::FakeOFStream out(1);
   StringPiece line;
   while (in.ReadLineOrEOF(line)) {
@@ -25,9 +25,10 @@ int main() {
     ++pipes; // source alignment?
     ++pipes; // target alignment?
     out << "|||";
-    for (util::TokenIter<util::SingleCharacter, true> feats(*pipes, ' '); feats; ++feats) {
+    for (util::TokenIter<util::SingleCharacter, true> feats(*++pipes, ' '); feats; ++feats) {
       int chars;
       double value = kConverter.StringToDouble(feats->data(), feats->size(), &chars);
+      UTIL_THROW_IF2(isnan(value), "Found a NaN: " << *feats);
       out << ' ' << exp(value);
     }
     out << '\n';
